@@ -1,1 +1,1 @@
-window.APP_CONFIG = { supabaseUrl: "", supabaseAnonKey: "" };
+window.APP_CONFIG = { supabaseUrl: "https://pwzrtwbdfucgltzirojf.supabase.co", supabaseAnonKey: "sb_publishable_S_nzwogYAgCq1XVVcjGB0g_M6UbPU49" };
