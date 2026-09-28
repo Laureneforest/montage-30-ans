@@ -6,7 +6,7 @@ let state=JSON.parse(localStorage.getItem('caulier30-check-v2')||'null')||{items
 state.items=state.items||seed.items; state.doneM=state.doneM||{}; state.doneBCE=state.doneBCE||{};
 let currentSpace='Tous les espaces';
 let selectedSupplier='';
-let rowSupplierFilter='';
+let spaceSupplierFilters={};
 const sb=window.supabase.createClient(window.APP_CONFIG.supabaseUrl,window.APP_CONFIG.supabaseAnonKey);
 let syncing=false;
 async function initCloud(){
@@ -117,18 +117,24 @@ function renderSupplier(q){
     return `<div class="spaceTitle"><div><h2 style="margin:0">${esc(s)}</h2><small>${d}/${a.length} éléments dispatchés</small></div></div><table><thead><tr><th>OK matériel</th><th>Matériel</th><th>Qté</th><th>Réf.</th><th class="hideMob">Catégorie</th></tr></thead><tbody>${a.map(x=>`<tr class="${state.doneM[x.id]?'done':''}"><td><input class="check" type="checkbox" ${state.doneM[x.id]?'checked':''} onchange="state.doneM['${x.id}']=this.checked;persist();cloudPatch('${x.id}',{ok_espace:this.checked});renderBody()"></td><td><b>${esc(x.name)}</b><div class="subtle">Destination : ${esc(x.space)}</div>${x.note?`<div class="warn">${esc(x.note)}</div>`:''}</td><td><b>${esc(x.qty)}</b> ${esc(x.unit)}</td><td class="${String(x.ref).includes('confirmer')?'warn':'ref'}">${esc(x.ref||'—')}</td><td class="hideMob"><span class="badge">${esc(x.category)}</span></td></tr>`).join('')}</tbody></table>`;
   }).join('');
 }
-function supplierHeaderSelect(){
-  const opts=supplierList().map(v=>`<option value="${esc(v)}" ${rowSupplierFilter===v?'selected':''}>${esc(v)}</option>`).join('');
-  return `<select class="vendorSelect" style="min-width:190px" onchange="rowSupplierFilter=this.value;renderBody()"><option value="">Tous les fournisseurs</option>${opts}</select>`;
+function spaceSupplierSelect(space){
+  const current=spaceSupplierFilters[space]||'';
+  const opts=supplierList().map(v=>`<option value="${esc(v)}" ${current===v?'selected':''}>${esc(v)}</option>`).join('');
+  return `<select class="vendorSelect" style="min-width:190px" onchange="spaceSupplierFilters['${esc(space)}']=this.value;renderBody()"><option value="">Tous les fournisseurs</option>${opts}</select>`;
 }
 function renderMaterials(q){
-  let arr=state.items.filter(x=>(currentSpace==='Tous les espaces'||x.space===currentSpace)&&(!rowSupplierFilter||supplierBase(x.vendor)===rowSupplierFilter)&&JSON.stringify(x).toLowerCase().includes(q));
-  if(!arr.length)return '<div class=empty>Aucun matériel</div>';
+  let baseArr=state.items.filter(x=>(currentSpace==='Tous les espaces'||x.space===currentSpace)&&JSON.stringify(x).toLowerCase().includes(q));
+  if(!baseArr.length)return '<div class=empty>Aucun matériel</div>';
   const shownSpaces=spaces.filter(s=>currentSpace==='Tous les espaces'||s===currentSpace);
   return shownSpaces.map(s=>{
-    let a=arr.filter(x=>x.space===s);if(!a.length)return'';
+    const filter=spaceSupplierFilters[s]||'';
+    let a=baseArr.filter(x=>x.space===s && (!filter || supplierBase(x.vendor)===filter));
+    const allInSpace=state.items.filter(x=>x.space===s);
+    if(!a.length){
+      return `<div class=spaceTitle><div><h2 style="margin:0">${esc(s)}</h2><small>Aucun matériel pour ce fournisseur</small></div><div>${spaceSupplierSelect(s)}</div></div><div class="empty">Aucun matériel correspondant</div>`;
+    }
     let d=a.filter(x=>state.doneM[x.id]).length;
-    return `<div class=spaceTitle><div><h2 style="margin:0">${esc(s)}</h2><small>${d}/${a.length} éléments dispatchés · ${pct(d,a.length)}%</small></div><div style="width:220px;max-width:35vw"><div class=progress><i style="width:${pct(d,a.length)}%"></i></div></div></div><table><thead><tr><th>OK matériel</th><th>Matériel</th><th>Qté</th><th>${supplierHeaderSelect()}</th><th>Réf.</th><th class=hideMob>Catégorie</th><th></th></tr></thead><tbody>${a.map(x=>`<tr class="${state.doneM[x.id]?'done':''}"><td><input class=check type=checkbox ${state.doneM[x.id]?'checked':''} onchange="state.doneM['${x.id}']=this.checked;persist();cloudPatch('${x.id}',{ok_espace:this.checked});renderBody()"></td><td>${esc(x.name)}${supplierBase(x.vendor)==='BCE'?`<div class="subtle">BCE · vérifier aussi dans “BCE · À prendre”</div>`:''}${x.note?`<div class=warn>${esc(x.note)}</div>`:''}</td><td><b>${esc(x.qty)}</b> ${esc(x.unit)}</td><td><span class="vendor">${esc(supplierBase(x.vendor)||"—")}</span></td><td class="${String(x.ref).includes('confirmer')?'warn':'ref'}">${esc(x.ref||'—')}</td><td class=hideMob><span class=badge>${esc(x.category)}</span></td><td><button class="btn alt" onclick="del('${x.id}')">×</button></td></tr>`).join('')}</tbody></table>`
+    return `<div class=spaceTitle><div><h2 style="margin:0">${esc(s)}</h2><small>${d}/${a.length} éléments affichés dispatchés · ${pct(d,a.length)}%</small></div><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><div>${spaceSupplierSelect(s)}</div><div style="width:220px;max-width:35vw"><div class=progress><i style="width:${pct(d,a.length)}%"></i></div></div></div></div><table><thead><tr><th>OK matériel</th><th>Matériel</th><th>Qté</th><th>Fournisseur / marque</th><th>Réf.</th><th class=hideMob>Catégorie</th><th></th></tr></thead><tbody>${a.map(x=>`<tr class="${state.doneM[x.id]?'done':''}"><td><input class=check type=checkbox ${state.doneM[x.id]?'checked':''} onchange="state.doneM['${x.id}']=this.checked;persist();cloudPatch('${x.id}',{ok_espace:this.checked});renderBody()"></td><td>${esc(x.name)}${supplierBase(x.vendor)==='BCE'?`<div class="subtle">BCE · vérifier aussi dans “BCE · À prendre”</div>`:''}${x.note?`<div class=warn>${esc(x.note)}</div>`:''}</td><td><b>${esc(x.qty)}</b> ${esc(x.unit)}</td><td><span class="vendor">${esc(supplierBase(x.vendor)||"—")}</span></td><td class="${String(x.ref).includes('confirmer')?'warn':'ref'}">${esc(x.ref||'—')}</td><td class=hideMob><span class=badge>${esc(x.category)}</span></td><td><button class="btn alt" onclick="del('${x.id}')">×</button></td></tr>`).join('')}</tbody></table>`
   }).join('')
 }
 function openModal(){
